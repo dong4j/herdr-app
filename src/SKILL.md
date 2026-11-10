@@ -151,3 +151,10 @@ Never experiment with pointer/key automation on the person's real display.
 When developing the app on Linux, its `scripts/sandbox` provides an isolated
 home, core and display: `up`, `do`, `status`, `shot`, then `down` when done.
 Never stop a server or session you didn't start.
+
+### Original Magpie Routing (custom macOS build)
+
+`routing.inspect` requests a live DOM/animation diagnostic snapshot at
+`$HERDR_APP_HOME/data/routing-inspection.json`. Open Routing first. The page
+runs unchanged in a native WKWebView; `shot` captures only GPUI, so a window
+screenshot is needed to see the composited web view.

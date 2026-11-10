@@ -10,6 +10,8 @@ mod movable;
 mod pane_drag;
 mod pane_size;
 mod titlebar;
+#[cfg(target_os = "macos")]
+mod routing;
 
 use crate::layout::{Axis, Background as Paint, Content, Fit, HeaderContent, Kind, Line, Node, PaneFrame, Size as Span};
 use crate::model::{self, Tab, Model};
@@ -346,6 +348,8 @@ struct Watched {
 
 pub struct AppWindow {
     core: Arc<Core>,
+    #[cfg(target_os = "macos")]
+    routing: Option<Entity<routing::RoutingView>>,
     runtime: Option<Rc<ShellRuntime>>,
     chrome: Node,
     /// Which layout `chrome` is (`layouts/<name>.json`).
@@ -470,6 +474,8 @@ impl AppWindow {
         let seen = std::fs::read_to_string(file("seen.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         let mut w = AppWindow {
             core,
+            #[cfg(target_os = "macos")]
+            routing: None,
             runtime,
             chrome: default_layout("main"),
             layout_name: "main".into(),
@@ -1161,6 +1167,8 @@ impl AppWindow {
         let mut mods = Vec::new();
         let visit = |n: &Node, terms: &mut Vec<(String, String)>, mods: &mut Vec<(String, Instance)>| match n.content() {
             Some(Content::Terminal { terminal }) => terms.push((n.id.clone(), terminal.clone())),
+            #[cfg(target_os = "macos")]
+            Some(content) if content.is_magpie_routing() => {},
             Some(Content::Mod { name, props }) => mods.push((n.id.clone(), Instance { name: name.clone(), props: props.clone() })),
             _ => {}
         };
@@ -1232,7 +1240,9 @@ impl AppWindow {
         let mut out = HashMap::new();
         let inst = |name: &String, props: &Value| Instance { name: name.clone(), props: props.clone() };
         for n in self.chrome.walk() {
-            if let Some(Content::Mod { name, props }) = n.content() {
+            if let Some(Content::Mod { name, props }) = n.content()
+                && !(cfg!(target_os = "macos") && name == "magpie-routing")
+            {
                 out.insert(n.id.clone(), inst(name, props));
             }
             if let Kind::Stack { header: Some(h), .. } = &n.kind
@@ -2858,6 +2868,10 @@ impl AppWindow {
     fn dispatch(&mut self, name: &str, a: &Value, person: bool, window: &mut Window, cx: &mut Context<Self>) {
         let active_ctx = self.model.active_tab().map(|c| c.id.clone());
         match name {
+            #[cfg(target_os = "macos")]
+            "routing.inspect" => {
+                self.reply = Some(self.routing.as_ref().map(|view| view.read(cx).inspect()).unwrap_or_else(|| json!({"ready": false})));
+            }
             // ---- spaces
             "space.new" => {
                 let name = Self::arg(a, "name").unwrap_or_default();
@@ -4069,6 +4083,10 @@ impl AppWindow {
     }
 
     fn render_block(&self, n: &Node, content: &Content, focused: &HashSet<String>, cx: &mut Context<Self>) -> AnyElement {
+        #[cfg(target_os = "macos")]
+        if content.is_magpie_routing() && let Some(view) = &self.routing {
+            return view.clone().into_any_element();
+        }
         match content {
             Content::Terminal { .. } => match self.pane_term(&n.id) {
                 Some(t) => {
@@ -4093,6 +4111,9 @@ impl AppWindow {
                 }
                 None => div().into_any_element(),
             },
+            Content::MagpieRouting { .. } => {
+                div().child("Original Magpie Routing requires the macOS WebKit build").into_any_element()
+            }
             Content::Mod { .. } => self.render_slot(&n.id, cx),
             Content::Agent { .. } => match self.shown_agent() {
                 Some(addr) => match self.agent_view(&n.id, &addr) {
@@ -4863,6 +4884,18 @@ impl Render for AppWindow {
         self.apply_titlebar(window);
         if mods::publish_window(self.window_json(window)) {
             self.refresh_snapshot_mods(cx);
+        }
+        // Native child views sit above GPUI. Hide the page while a GPUI
+        // dialog/menu is open so it cannot cover or intercept that overlay.
+        #[cfg(target_os = "macos")]
+        {
+            let shown = self.chrome.visible_blocks().iter().any(|n| n.content().is_some_and(Content::is_magpie_routing));
+            if shown && self.routing.is_none() {
+                self.routing = Some(cx.new(routing::RoutingView::new));
+            }
+            if let Some(view) = &self.routing {
+                view.update(cx, |view, _| view.set_visible(shown && self.overlays.is_empty()));
+            }
         }
         let focused = self.focused_path(window, cx);
         let tree = self.render_node(&self.chrome, &focused, None, cx);

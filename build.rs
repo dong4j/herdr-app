@@ -39,6 +39,24 @@ fn main() {
     embed(&base, "defaults/icons", "DEFAULT_ICONS", "default_icons.rs");
     embed(&base, "defaults/frame", "FRAME_MODS", "frame_mods.rs");
 
+    // WKWebView is an AppKit child view; keep Objective-C ownership in a
+    // small ARC bridge rather than changing GPUI's renderer or event loop.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        use std::process::Command;
+        let out = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
+        let source = "src/window/routing_webview.m";
+        println!("cargo:rerun-if-changed={source}");
+        let object = out.join("routing_webview.o");
+        assert!(Command::new("clang").args(["-fobjc-arc", "-fmodules", "-mmacosx-version-min=12.0", "-c", source, "-o"]).arg(&object).status().unwrap().success());
+        let archive = out.join("libherdr_routing.a");
+        assert!(Command::new("ar").arg("crs").arg(&archive).arg(object).status().unwrap().success());
+        println!("cargo:rustc-link-search=native={}", out.display());
+        println!("cargo:rustc-link-lib=static=herdr_routing");
+        for framework in ["WebKit", "AppKit", "Foundation"] {
+            println!("cargo:rustc-link-lib=framework={framework}");
+        }
+    }
+
     // Windows takes the window, taskbar and Start menu icon from the program file.
     #[cfg(windows)]
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {

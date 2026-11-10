@@ -1,3 +1,4 @@
+/** Tab bar with a macOS panel for the original Magpie Routing web page. */
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings } from "herdr";
@@ -14,6 +15,7 @@ function find(node, id) {
 export default class Tabs extends View {
   init() {
     this.pressed = null;
+    this.panelWidths = JSON.parse(localStorage.getItem("panelWidths") ?? '{"routing":760}');
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
   }
 
@@ -29,7 +31,7 @@ export default class Tabs extends View {
         const stored = this.panels[space.id] ?? null, want = enabled.includes(stored) ? stored : null;
         if (want !== now) {
           this.pending = { want, until: Date.now() + 1000 };
-          if (want) { run("layout.select", { stack: "panel-body", child: want }); run("layout.show", { id: "panel" }); }
+          if (want) { run("layout.resize", { id: "panel", px: this.panelWidths[want] ?? 368 }); run("layout.select", { stack: "panel-body", child: want }); run("layout.show", { id: "panel" }); }
           else run("layout.hide", { id: "panel" });
           return;
         }
@@ -77,7 +79,10 @@ export default class Tabs extends View {
       ? Math.max(10, (root.traffic_lights[0] + 64) / settings().zoom - (sidebar?.hidden ? 0 : sidebar?.size?.px ?? 0))
       : 10;
     const panel = find(root, "panel"), body = find(root, "panel-body");
-    const enabled = shared("workspace.panels") ?? ["files", "changes"];
+    // A native Magpie block is opt-in per layout and available on macOS.
+    const routingContent = find(root, "routing")?.content;
+    const hasRouting = w?.platform === "macos" && Boolean(routingContent?.magpie_routing || routingContent?.mod === "magpie-routing");
+    const enabled = [...new Set([...(shared("workspace.panels") ?? ["files", "changes"]), ...(hasRouting ? ["routing"] : [])])];
     this.syncPanel(space, panel, body, enabled);
     const panelButton = (id, label, icon) => {
       const on = panel && !panel.hidden && body?.active === id;
@@ -85,8 +90,13 @@ export default class Tabs extends View {
         .text_size(12).bg(on ? t.selected : t.chrome).text_color(on ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
         .on_click(() => {
+          // Save the dragged width before switching panel content.
+          if (body?.active && panel?.size?.px) {
+            this.panelWidths[body.active] = panel.size.px;
+            localStorage.setItem("panelWidths", JSON.stringify(this.panelWidths));
+          }
           if (on) run("layout.hide", { id: "panel" });
-          else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
+          else { run("layout.resize", { id: "panel", px: this.panelWidths[id] ?? 368 }); run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
         }).child(svg(icon).size(14)).child(label);
     };
     return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
@@ -96,6 +106,7 @@ export default class Tabs extends View {
       .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
+      .when(hasRouting, el => el.child(panelButton("routing", "Routing", "mods/tabs/routing.svg")))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));

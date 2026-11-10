@@ -172,6 +172,12 @@ End a terminal and its sub-agents.
 |---|---|
 | `terminal` | yes |
 
+## `routing.inspect`
+
+Write a diagnostic snapshot of the original Magpie page to data/routing-inspection.json (no prompts or sign-in key).
+
+No arguments.
+
 ## `space.select`
 
 Show a space (by position or id).

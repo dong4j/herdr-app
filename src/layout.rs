@@ -11,6 +11,9 @@ use serde_json::Value;
 #[serde(untagged)]
 pub enum Content {
     Terminal { terminal: String },
+    /// The original Magpie Routing page, rendered by WebKit on macOS.
+    /// Kept distinct from mods: HTML/CSS never run in the GPUI JS VM.
+    MagpieRouting { magpie_routing: bool },
     Mod {
         #[serde(rename = "mod")]
         name: String,
@@ -28,6 +31,15 @@ pub enum Content {
     },
     /// An agent's terminal, full size (`"focused"`: the selected agent).
     Agent { agent: String },
+}
+
+impl Content {
+    /// Preserve personal layouts from the earlier mod version without editing
+    /// their files. The macOS host upgrades that one reserved slot to WebKit.
+    pub fn is_magpie_routing(&self) -> bool {
+        matches!(self, Self::MagpieRouting { magpie_routing: true })
+            || matches!(self, Self::Mod { name, .. } if name == "magpie-routing")
+    }
 }
 
 /// Which side of its node a floating block sits on. Left/right make it
@@ -888,5 +900,32 @@ mod tests {
         let ids: Vec<_> = n.children().iter().map(|c| c.id.clone()).collect();
         assert_eq!(ids, ["c", "b", "a"]);
         assert_eq!(n.children()[0].size, Some(Size::Px { px: 100.0 }));
+    }
+}
+
+#[cfg(test)]
+mod original_routing_tests {
+    #[test]
+    fn personal_mod_layout_uses_the_original_page_without_rewriting_it() {
+        let source = r#"{"mod":"magpie-routing"}"#;
+        let content: super::Content = serde_json::from_str(source).unwrap();
+        assert!(content.is_magpie_routing());
+        assert_eq!(serde_json::to_value(&content).unwrap(), serde_json::json!({"mod":"magpie-routing"}));
+        assert!(!super::Content::MagpieRouting { magpie_routing: false }.is_magpie_routing());
+        let files: super::Content = serde_json::from_str(r#"{"mod":"files"}"#).unwrap();
+        assert!(!files.is_magpie_routing());
+    }
+
+    /// The dedicated native block must survive a layout save/reload without
+    /// being mistaken for a JavaScript mod or changing existing blocks.
+    #[test]
+    fn native_routing_round_trips_beside_existing_panels() {
+        let source = r#"{"id":"routing","type":"block","content":{"magpie_routing":true}}"#;
+        let node: super::Node = serde_json::from_str(source).unwrap();
+        assert!(matches!(node.content(), Some(super::Content::MagpieRouting { magpie_routing: true })));
+        let saved = serde_json::to_value(&node).unwrap();
+        assert_eq!(saved["content"], serde_json::json!({"magpie_routing":true}));
+        let old: super::Node = serde_json::from_str(r#"{"id":"files","type":"block","content":{"mod":"files"}}"#).unwrap();
+        assert!(matches!(old.content(), Some(super::Content::Mod { .. })));
     }
 }

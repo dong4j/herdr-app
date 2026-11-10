@@ -160,6 +160,13 @@
                       "content": {
                         "mod": "changes"
                       }
+                    },
+                    {
+                      "id": "routing",
+                      "type": "block",
+                      "content": {
+                        "magpie_routing": true
+                      }
                     }
                   ]
                 }

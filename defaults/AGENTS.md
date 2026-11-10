@@ -32,7 +32,7 @@ and terminals, open dialogs, popups and floating blocks, show a live
 terminal inside a block, run any app command, run programs (`exec`) and
 fetch URLs, keep state per mod or shared between mods, animate natively.
 
-You can't: use HTML, CSS, a web view, Node APIs or `setTimeout`; draw
+Mods cannot use HTML, CSS, a general web view, Node APIs or `setTimeout`; draw
 outside your block except through overlays; change how a terminal itself
 draws text; read or change other mods' code at run time.
 
@@ -1037,3 +1037,19 @@ including a small herdr-core skill you can install with the user's permission.
 - One mod per idea. Don't edit `AGENTS.md` or the `.d.ts` files (the app
   rewrites them). Don't touch other mods unless the request
   needs it.
+
+## Original Magpie Routing (custom macOS build)
+
+A layout block with `"content": { "magpie_routing": true }` embeds the original
+Magpie Routing page in WKWebView. The Files/Changes tab bar offers Routing
+when this block has id `routing` in `panel-body`. Requires Magpie.app in
+`/Applications` or `~/Applications`. The host starts a private loopback
+`magpie web` process and stops only that child on close. Magpie owns the page,
+CSS, animations, context cards, history and APIs; Herdr removes only its
+outer navigation. WebKit content hides while a Herdr overlay is shown.
+`routing.inspect` schedules a live DOM snapshot in `data/routing-inspection.json`
+without request bodies or the sign-in key. `herdr-app shot` captures the GPUI
+frame; use a window screenshot for the composited native WebKit child view.
+Other platforms and ordinary mods remain native GPUI, without web views.
+Existing personal layouts referencing `"mod": "magpie-routing"` use this same
+original page on macOS without rewriting the layout or running the old mod.
