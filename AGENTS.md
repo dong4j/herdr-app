@@ -6,6 +6,10 @@ maintains it.
 
 If AGENTS.local.md exists, read it too: the maintainer's local rules.
 
+For Magpie Routing integration maintenance or Herdr version upgrades in this
+fork, first read [docs/magpie-routing.md](docs/magpie-routing.md) for the
+integration constraints, upstream workflow, and required validation.
+
 ## Compatibility
 
 Preserve compatibility with released versions and installed user data.
